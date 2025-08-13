@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Head-Tracked Cardboard Box</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #canvas {
+            display: block;
+        }
+        
+        #video {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            z-index: 100;
+            transform: scaleX(-1);
+        }
+        
+        #window-frame {
+            display: none; /* Remove window frame */
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+        }
+        
+        #status {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        <video id="video" autoplay muted></video>
+        <div id="window-frame"></div>
+        <div id="info">
+            Head Position: <span id="head-pos">Detecting...</span><br>
+            Camera Distance: <span id="distance">-</span>
+        </div>
+        <div id="status">Click to start camera</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
+
+    <script>
+        // Global variables
+        let scene, camera, renderer;
+        let faceDetection;
+        let video;
+        let headPosition = { x: 0, y: 0, z: 1 };
+        let targetCameraPosition = { x: 0, y: 0, z: 5 };
+        let isTracking = false;
+
+        // Initialize Three.js scene
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xD2B48C); // Cardboard color
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 8, 0); // Looking down into the box
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            createScene();
+            animate();
+        }
+
+        // Create the cardboard box with objects inside
+        function createScene() {
+            // Create cardboard box interior
+            createCardboardBoxInterior();
+            
+            // Add common objects inside the box
+            addBoxContents();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(2, 10, 2);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.1;
+            directionalLight.shadow.camera.far = 20;
+            directionalLight.shadow.camera.left = -8;
+            directionalLight.shadow.camera.right = 8;
+            directionalLight.shadow.camera.top = 8;
+            directionalLight.shadow.camera.bottom = -8;
+            scene.add(directionalLight);
+
+            // Add some warm interior lighting
+            const interiorLight = new THREE.PointLight(0xfff8dc, 0.5, 10);
+            interiorLight.position.set(0, 3, 0);
+            scene.add(interiorLight);
+        }
+
+        function createCardboardBoxInterior() {
+            const boxMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xD2B48C, // Cardboard tan color
+                side: THREE.FrontSide
+            });
+            
+            const boxSize = 6;
+            const boxHeight = 4;
+            
+            // Bottom of box
+            const bottom = new THREE.PlaneGeometry(boxSize, boxSize);
+            const bottomMesh = new THREE.Mesh(bottom, boxMaterial);
+            bottomMesh.rotation.x = -Math.PI / 2;
+            bottomMesh.position.y = -boxHeight / 2;
+            bottomMesh.receiveShadow = true;
+            scene.add(bottomMesh);
+            
+            // Box walls (viewed from inside)
+            const wallMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xC19A6B, // Slightly darker for walls
+                side: THREE.FrontSide
+            });
+            
+            // Back wall
+            const backWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const backMesh = new THREE.Mesh(backWall, wallMaterial);
+            backMesh.position.set(0, 0, -boxSize/2);
+            scene.add(backMesh);
+            
+            // Front wall
+            const frontWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const frontMesh = new THREE.Mesh(frontWall, wallMaterial);
+            frontMesh.rotation.y = Math.PI;
+            frontMesh.position.set(0, 0, boxSize/2);
+            scene.add(frontMesh);
+            
+            // Left wall
+            const leftWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const leftMesh = new THREE.Mesh(leftWall, wallMaterial);
+            leftMesh.rotation.y = Math.PI / 2;
+            leftMesh.position.set(-boxSize/2, 0, 0);
+            scene.add(leftMesh);
+            
+            // Right wall
+            const rightWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const rightMesh = new THREE.Mesh(rightWall, wallMaterial);
+            rightMesh.rotation.y = -Math.PI / 2;
+            rightMesh.position.set(boxSize/2, 0, 0);
+            scene.add(rightMesh);
+        }
+
+        function addBoxContents() {
+            // Add a book
+            createBook(-1.5, -1.8, 0.5);
+            
+            // Add a coffee mug
+            createCoffeeMug(1, -1.8, -1);
+            
+            // Add a small ball
+            createBall(0.5, -1.3, 1.5, 0x3498db); // Blue ball
+            
+            // Add a pencil
+            createPencil(-0.8, -1.7, -1.8);
+            
+            // Add a small box/package
+            createSmallBox(1.8, -1.5, 0.8);
+            
+            // Add some papers
+            createPapers(-1.8, -1.9, -0.5);
+            
+            // Add a phone
+            createPhone(0, -1.85, -2);
+        }
+
+        function createBook(x, y, z) {
+            const bookGroup = new THREE.Group();
+            
+            // Book cover
+            const cover = new THREE.BoxGeometry(1.2, 0.15, 0.8);
+            const coverMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const coverMesh = new THREE.Mesh(cover, coverMaterial);
+            coverMesh.castShadow = true;
+            coverMesh.receiveShadow = true;
+            bookGroup.add(coverMesh);
+            
+            bookGroup.position.set(x, y, z);
+            bookGroup.rotation.y = Math.random() * 0.5;
+            scene.add(bookGroup);
+        }
+
+        function createCoffeeMug(x, y, z) {
+            const mugGroup = new THREE.Group();
+            
+            // Mug body (cylinder)
+            const mugBody = new THREE.CylinderGeometry(0.25, 0.3, 0.6, 16);
+            const mugMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const mugMesh = new THREE.Mesh(mugBody, mugMaterial);
+            mugMesh.castShadow = true;
+            mugMesh.receiveShadow = true;
+            mugGroup.add(mugMesh);
+            
+            // Handle
+            const handleGeometry = new THREE.TorusGeometry(0.15, 0.03, 8, 16, Math.PI);
+            const handleMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const handleMesh = new THREE.Mesh(handleGeometry, handleMaterial);
+            handleMesh.rotation.z = Math.PI / 2;
+            handleMesh.position.set(0.35, 0, 0);
+            mugGroup.add(handleMesh);
+            
+            mugGroup.position.set(x, y + 0.3, z);
+            scene.add(mugGroup);
+        }
+
+        function createBall(x, y, z, color) {
+            const ballGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+            const ballMaterial = new THREE.MeshLambertMaterial({ color });
+            const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            ball.position.set(x, y, z);
+            ball.castShadow = true;
+            ball.receiveShadow = true;
+            scene.add(ball);
+        }
+
+        function createPencil(x, y, z) {
+            const pencilGroup = new THREE.Group();
+            
+            // Pencil body
+            const bodyGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1, 8);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xffd700 });
+            const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            bodyMesh.castShadow = true;
+            pencilGroup.add(bodyMesh);
+            
+            // Pencil tip
+            const tipGeometry = new THREE.CylinderGeometry(0.01, 0.03, 0.1, 8);
+            const tipMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const tipMesh = new THREE.Mesh(tipGeometry, tipMaterial);
+            tipMesh.position.y = -0.55;
+            pencilGroup.add(tipMesh);
+            
+            pencilGroup.position.set(x, y, z);
+            pencilGroup.rotation.z = Math.PI / 2;
+            pencilGroup.rotation.y = Math.random() * Math.PI;
+            scene.add(pencilGroup);
+        }
+
+        function createSmallBox(x, y, z) {
+            const boxGeometry = new THREE.BoxGeometry(0.6, 0.4, 0.4);
+            const boxMaterial = new THREE.MeshLambertMaterial({ color: 0x654321 });
+            const box = new THREE.Mesh(boxGeometry, boxMaterial);
+            box.position.set(x, y, z);
+            box.rotation.y = Math.random() * 0.5;
+            box.castShadow = true;
+            box.receiveShadow = true;
+            scene.add(box);
+        }
+
+        function createPapers(x, y, z) {
+            for (let i = 0; i < 3; i++) {
+                const paperGeometry = new THREE.PlaneGeometry(0.8, 1.1);
+                const paperMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
+                const paper = new THREE.Mesh(paperGeometry, paperMaterial);
+                paper.position.set(x + i * 0.02, y + i * 0.01, z + i * 0.02);
+                paper.rotation.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+                paper.rotation.z = (Math.random() - 0.5) * 0.3;
+                paper.receiveShadow = true;
+                scene.add(paper);
+            }
+        }
+
+        function createPhone(x, y, z) {
+            const phoneGeometry = new THREE.BoxGeometry(0.4, 0.05, 0.8);
+            const phoneMaterial = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            const phone = new THREE.Mesh(phoneGeometry, phoneMaterial);
+            phone.position.set(x, y, z);
+            phone.rotation.y = Math.random() * 0.3;
+            phone.castShadow = true;
+            phone.receiveShadow = true;
+            scene.add(phone);
+            
+            // Screen
+            const screenGeometry = new THREE.PlaneGeometry(0.35, 0.7);
+            const screenMaterial = new THREE.MeshBasicMaterial({ color: 0x1a1a2e });
+            const screen = new THREE.Mesh(screenGeometry, screenMaterial);
+            screen.position.set(0, 0.026, 0);
+            screen.rotation.x = -Math.PI / 2;
+            phone.add(screen);
+        }
+
+        // Initialize MediaPipe Face Detection
+        function initFaceDetection() {
+            faceDetection = new FaceDetection({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+                }
+            });
+
+            faceDetection.setOptions({
+                model: 'short',
+                minDetectionConfidence: 0.5
+            });
+
+            faceDetection.onResults(onFaceDetectionResults);
+        }
+
+        // Process face detection results
+        function onFaceDetectionResults(results) {
+            if (results.detections && results.detections.length > 0) {
+                const detection = results.detections[0];
+                const bbox = detection.boundingBox;
+                
+                // Calculate head position from bounding box
+                const centerX = bbox.xCenter;
+                const centerY = bbox.yCenter;
+                const width = bbox.width;
+                
+                // Map face position to 3D coordinates
+                headPosition.x = (centerX - 0.5) * 20; // Scale to reasonable range
+                headPosition.y = (0.5 - centerY) * 15; // Invert Y and scale
+                headPosition.z = Math.max(0.5, 2 - width * 3); // Closer face = smaller z
+                
+                // Calculate target camera position based on head position
+                targetCameraPosition.x = -headPosition.x * 0.3; // Reduced movement range
+                targetCameraPosition.y = headPosition.y * 0.2 + 2; // Smaller vertical range
+                targetCameraPosition.z = headPosition.z * 1.5 + 1.5; // Closer to the box
+                
+                isTracking = true;
+                updateUI();
+            } else {
+                isTracking = false;
+            }
+        }
+
+        // Start camera and face detection
+        async function startCamera() {
+            try {
+                video = document.getElementById('video');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    document.getElementById('status').textContent = 'Camera active - Move your head to look around!';
+                    
+                    // Start face detection
+                    const cameraUtils = new Camera(video, {
+                        onFrame: async () => {
+                            await faceDetection.send({image: video});
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                    cameraUtils.start();
+                };
+            } catch (error) {
+                document.getElementById('status').textContent = 'Camera access denied. Please allow camera access.';
+                console.error('Camera error:', error);
+            }
+        }
+
+        // Update camera position based on head tracking
+        function updateCamera() {
+            if (isTracking) {
+                // Smooth interpolation
+                camera.position.x += (targetCameraPosition.x - camera.position.x) * 0.1;
+                camera.position.y += (targetCameraPosition.y - camera.position.y) * 0.1;
+                camera.position.z += (targetCameraPosition.z - camera.position.z) * 0.1;
+                
+                // Keep camera looking straight forward (no rotation)
+                // This creates the window panning effect instead of rotation
+                camera.lookAt(
+                    camera.position.x,      // Look at same X as camera (no side rotation)
+                    camera.position.y - 1,  // Look slightly down into the box
+                    camera.position.z - 3   // Look into the miniature scene
+                );
+            }
+        }
+
+        // Update UI elements
+        function updateUI() {
+            document.getElementById('head-pos').textContent = 
+                `X: ${headPosition.x.toFixed(1)}, Y: ${headPosition.y.toFixed(1)}, Z: ${headPosition.z.toFixed(1)}`;
+            document.getElementById('distance').textContent = headPosition.z.toFixed(1);
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize everything
+        function init() {
+            initThreeJS();
+            initFaceDetection();
+            
+            // Add event listeners
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('status').addEventListener('click', startCamera);
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
