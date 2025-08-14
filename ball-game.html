@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Hand Catch - Ball Catching Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        #video {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 120px;
+            height: 90px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            z-index: 100;
+            transform: scaleX(-1);
+            opacity: 0.8;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: white;
+            z-index: 100;
+        }
+        
+        #score-display {
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            min-width: 200px;
+        }
+        
+        .score-item {
+            font-size: 18px;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .score-value {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        #game-info {
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 100;
+        }
+        
+        #game-controls {
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            touch-action: manipulation;
+            transition: all 0.3s;
+        }
+        
+        button:hover, button:active {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .restart-btn {
+            background: linear-gradient(45deg, #FF9800, #F57C00);
+        }
+        
+        .stop-btn {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+        }
+        
+        #status {
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .instruction {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 10px;
+            max-width: 300px;
+        }
+        
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 200;
+            display: none;
+        }
+        
+        .game-over-score {
+            font-size: 24px;
+            color: #4CAF50;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        <video id="video" autoplay muted></video>
+        
+        <div id="ui">
+            <div id="score-display">
+                <div class="score-item">
+                    <span>Score:</span>
+                    <span class="score-value" id="score">0</span>
+                </div>
+                <div class="score-item">
+                    <span>Missed:</span>
+                    <span class="score-value" id="missed">0</span>
+                </div>
+                <div class="score-item">
+                    <span>Level:</span>
+                    <span class="score-value" id="level">1</span>
+                </div>
+            </div>
+            
+            <div id="game-info">
+                <div><strong>Hand Tracking:</strong> <span id="tracking-status">Inactive</span></div>
+                <div><strong>Left Hand:</strong> <span id="left-hand">Not detected</span></div>
+                <div><strong>Right Hand:</strong> <span id="right-hand">Not detected</span></div>
+            </div>
+        </div>
+        
+        <div id="controls">
+            <div id="game-controls">
+                <div id="status">Hold up both hands to start catching balls!</div>
+                <button id="enable-btn" onclick="startCamera()">Start Game</button>
+                <button id="restart-btn" class="restart-btn" onclick="restartGame()" style="display:none;">Restart</button>
+                <button id="stop-btn" class="stop-btn" onclick="stopGame()" style="display:none;">Stop Game</button>
+                <div class="instruction">
+                    Hold your hands up in front of the camera. Move them to control the saucers and catch falling balls!
+                </div>
+            </div>
+        </div>
+        
+        <div id="game-over">
+            <h2>Game Over!</h2>
+            <div class="game-over-score">Final Score: <span id="final-score">0</span></div>
+            <div>Balls Caught: <span id="final-caught">0</span></div>
+            <div>Balls Missed: <span id="final-missed">0</span></div>
+            <div>Level Reached: <span id="final-level">1</span></div>
+            <button onclick="restartGame()" style="margin-top: 20px;">Play Again</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <script>
+        // Global variables
+        let scene, camera, renderer;
+        let hands;
+        let video;
+        let isTracking = false;
+        let gameState = 'menu'; // 'menu', 'playing', 'paused', 'over'
+        
+        // Hand tracking
+        let leftHand = null;
+        let rightHand = null;
+        
+        // Game objects
+        let leftSaucer, rightSaucer;
+        let balls = [];
+        let saucers = [];
+        
+        // Game variables
+        let score = 0;
+        let missed = 0;
+        let level = 1;
+        let ballSpawnRate = 0.02; // Probability per frame
+        let ballSpeed = 0.05;
+        let maxMissed = 10;
+
+        // Initialize Three.js scene
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 10);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            createGameScene();
+            animate();
+        }
+
+        function createGameScene() {
+            // Create saucers
+            createSaucers();
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(5, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+        }
+
+        function createSaucers() {
+            // Left saucer
+            const saucerGeometry = new THREE.CylinderGeometry(0.8, 0.6, 0.2, 16);
+            const leftSaucerMaterial = new THREE.MeshLambertMaterial({ color: 0xff6b6b });
+            leftSaucer = new THREE.Mesh(saucerGeometry, leftSaucerMaterial);
+            leftSaucer.position.set(-3, -3, 0);
+            leftSaucer.castShadow = true;
+            leftSaucer.receiveShadow = true;
+            scene.add(leftSaucer);
+            
+            // Right saucer
+            const rightSaucerMaterial = new THREE.MeshLambertMaterial({ color: 0x4ecdc4 });
+            rightSaucer = new THREE.Mesh(saucerGeometry, rightSaucerMaterial);
+            rightSaucer.position.set(3, -3, 0);
+            rightSaucer.castShadow = true;
+            rightSaucer.receiveShadow = true;
+            scene.add(rightSaucer);
+            
+            saucers = [leftSaucer, rightSaucer];
+        }
+
+        function createBall() {
+            const ballGeometry = new THREE.SphereGeometry(0.15, 12, 12);
+            const ballColors = [0xffeb3b, 0x4caf50, 0x2196f3, 0xff9800, 0x9c27b0];
+            const ballMaterial = new THREE.MeshLambertMaterial({ 
+                color: ballColors[Math.floor(Math.random() * ballColors.length)]
+            });
+            const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            
+            // Random X position at top of screen
+            ball.position.set(
+                (Math.random() - 0.5) * 12, // X position
+                6, // Y position (top)
+                0  // Z position
+            );
+            
+            ball.userData = {
+                velocity: new THREE.Vector3(0, -ballSpeed * (0.5 + Math.random() * 0.5), 0),
+                caught: false
+            };
+            
+            ball.castShadow = true;
+            balls.push(ball);
+            scene.add(ball);
+        }
+
+        function updateBalls() {
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const ball = balls[i];
+                
+                if (!ball.userData.caught) {
+                    // Move ball down
+                    ball.position.add(ball.userData.velocity);
+                    
+                    // Check collision with saucers
+                    checkBallSaucerCollision(ball);
+                    
+                    // Remove ball if it goes off screen
+                    if (ball.position.y < -6) {
+                        scene.remove(ball);
+                        balls.splice(i, 1);
+                        missed++;
+                        updateUI();
+                        
+                        // Check game over
+                        if (missed >= maxMissed) {
+                            gameOver();
+                        }
+                    }
+                }
+            }
+        }
+
+        function checkBallSaucerCollision(ball) {
+            saucers.forEach(saucer => {
+                const distance = ball.position.distanceTo(saucer.position);
+                if (distance < 0.8 && !ball.userData.caught) { // Collision detected
+                    ball.userData.caught = true;
+                    
+                    // Add points and remove ball
+                    score += 10;
+                    scene.remove(ball);
+                    const index = balls.indexOf(ball);
+                    if (index > -1) balls.splice(index, 1);
+                    
+                    // Level up every 50 points
+                    if (score > 0 && score % 50 === 0) {
+                        level++;
+                        ballSpawnRate = Math.min(ballSpawnRate + 0.005, 0.08);
+                        ballSpeed = Math.min(ballSpeed + 0.01, 0.15);
+                    }
+                    
+                    updateUI();
+                }
+            });
+        }
+
+        // Initialize MediaPipe Hands
+        function initHands() {
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onHandsResults);
+        }
+
+        // Process hand detection results
+        function onHandsResults(results) {
+            leftHand = null;
+            rightHand = null;
+            
+            if (results.multiHandLandmarks && results.multiHandedness) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const handedness = results.multiHandedness[i];
+                    
+                    // Get palm center (landmark 9 is middle finger base)
+                    const palmCenter = landmarks[9];
+                    
+                    const handData = {
+                        x: (palmCenter.x - 0.5) * 2, // Normalize to -1 to 1
+                        y: (0.5 - palmCenter.y) * 2, // Flip Y and normalize
+                        detected: true
+                    };
+                    
+                    if (handedness.label === 'Left') {
+                        leftHand = handData;
+                    } else {
+                        rightHand = handData;
+                    }
+                }
+            }
+            
+            isTracking = leftHand || rightHand;
+            updateSaucerPositions();
+            updateTrackingUI();
+        }
+
+        function updateSaucerPositions() {
+            if (leftHand) {
+                leftSaucer.position.x = leftHand.x * 5; // Scale to scene
+                leftSaucer.position.y = leftHand.y * 3 - 1; // Offset down
+            }
+            
+            if (rightHand) {
+                rightSaucer.position.x = rightHand.x * 5;
+                rightSaucer.position.y = rightHand.y * 3 - 1;
+            }
+        }
+
+        function updateTrackingUI() {
+            document.getElementById('tracking-status').textContent = isTracking ? 'Active' : 'Inactive';
+            document.getElementById('left-hand').textContent = leftHand ? 'Detected' : 'Not detected';
+            document.getElementById('right-hand').textContent = rightHand ? 'Detected' : 'Not detected';
+        }
+
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('missed').textContent = missed;
+            document.getElementById('level').textContent = level;
+        }
+
+        function gameLoop() {
+            if (gameState === 'playing') {
+                // Spawn new balls
+                if (Math.random() < ballSpawnRate) {
+                    createBall();
+                }
+                
+                // Update balls
+                updateBalls();
+            }
+        }
+
+        function startGame() {
+            gameState = 'playing';
+            score = 0;
+            missed = 0;
+            level = 1;
+            ballSpawnRate = 0.02;
+            ballSpeed = 0.05;
+            
+            // Clear existing balls
+            balls.forEach(ball => scene.remove(ball));
+            balls = [];
+            
+            document.getElementById('restart-btn').style.display = 'inline-block';
+            document.getElementById('stop-btn').style.display = 'inline-block';
+            document.getElementById('status').textContent = 'Game Active - Catch the balls!';
+            
+            updateUI();
+        }
+
+        function stopGame() {
+            gameState = 'menu';
+            balls.forEach(ball => scene.remove(ball));
+            balls = [];
+            
+            document.getElementById('restart-btn').style.display = 'none';
+            document.getElementById('stop-btn').style.display = 'none';
+            document.getElementById('status').textContent = 'Game Stopped';
+        }
+
+        function restartGame() {
+            document.getElementById('game-over').style.display = 'none';
+            startGame();
+        }
+
+        function gameOver() {
+            gameState = 'over';
+            
+            // Show game over screen
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('final-caught').textContent = Math.floor(score / 10);
+            document.getElementById('final-missed').textContent = missed;
+            document.getElementById('final-level').textContent = level;
+            document.getElementById('game-over').style.display = 'block';
+            
+            document.getElementById('status').textContent = 'Game Over!';
+        }
+
+        // Start camera and hand detection
+        async function startCamera() {
+            try {
+                video = document.getElementById('video');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    document.getElementById('enable-btn').style.display = 'none';
+                    document.getElementById('status').textContent = 'Camera active - Show both hands to start!';
+                    
+                    // Start hand detection
+                    initHands();
+                    const camera = new Camera(video, {
+                        onFrame: async () => {
+                            await hands.send({image: video});
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                    camera.start();
+                    
+                    // Auto-start game when hands detected
+                    setTimeout(() => {
+                        if (isTracking && gameState === 'menu') {
+                            startGame();
+                        }
+                    }, 2000);
+                };
+            } catch (error) {
+                document.getElementById('status').textContent = 'Camera access denied';
+                console.error('Camera error:', error);
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            gameLoop();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize everything
+        function init() {
+            initThreeJS();
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
