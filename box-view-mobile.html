@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Mobile Cardboard Box Explorer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+            max-width: 250px;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+            touch-action: manipulation;
+        }
+        
+        button:hover, button:active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .instruction {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        
+        <div id="info">
+            <strong>Mobile Box Explorer</strong><br>
+            Device Orientation: <span id="orientation-status">Not active</span><br>
+            Tilt X: <span id="tilt-x">0°</span><br>
+            Tilt Y: <span id="tilt-y">0°</span><br>
+            View Mode: <span id="view-mode">Overview</span>
+        </div>
+        
+        <div id="controls">
+            <div id="status">Tap to enable device orientation</div>
+            <button id="enable-btn" onclick="enableOrientation()">Enable Motion</button>
+            <button id="calibrate-btn" onclick="calibrate()" style="display:none;" disabled>Calibrate Position</button>
+            <div class="instruction" id="instruction">
+                Tilt your device to peek into the box from different angles
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // Global variables
+        let scene, camera, renderer;
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let calibratedOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let targetCameraPosition = { x: 0, y: 8, z: 0 };
+        let isOrientationActive = false;
+        let isCalibrated = false;
+
+        // Initialize Three.js scene
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 8, 0);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            createScene();
+            animate();
+        }
+
+        // Create the cardboard box with objects inside
+        function createScene() {
+            createCardboardBoxInterior();
+            addBoxContents();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(2, 10, 2);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.1;
+            directionalLight.shadow.camera.far = 20;
+            directionalLight.shadow.camera.left = -8;
+            directionalLight.shadow.camera.right = 8;
+            directionalLight.shadow.camera.top = 8;
+            directionalLight.shadow.camera.bottom = -8;
+            scene.add(directionalLight);
+
+            const interiorLight = new THREE.PointLight(0xfff8dc, 0.5, 10);
+            interiorLight.position.set(0, 3, 0);
+            scene.add(interiorLight);
+        }
+
+        function createCardboardBoxInterior() {
+            const boxMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xD2B48C
+            });
+            
+            const boxSize = 6;
+            const boxHeight = 3;
+            
+            // Bottom of box
+            const bottom = new THREE.PlaneGeometry(boxSize, boxSize);
+            const bottomMesh = new THREE.Mesh(bottom, boxMaterial);
+            bottomMesh.rotation.x = -Math.PI / 2;
+            bottomMesh.position.y = -boxHeight / 2;
+            bottomMesh.receiveShadow = true;
+            scene.add(bottomMesh);
+            
+            const wallMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xC19A6B
+            });
+            
+            // Back wall
+            const backWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const backMesh = new THREE.Mesh(backWall, wallMaterial);
+            backMesh.position.set(0, 0, -boxSize/2);
+            scene.add(backMesh);
+            
+            // Front wall
+            const frontWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const frontMesh = new THREE.Mesh(frontWall, wallMaterial);
+            frontMesh.rotation.y = Math.PI;
+            frontMesh.position.set(0, 0, boxSize/2);
+            scene.add(frontMesh);
+            
+            // Left wall
+            const leftWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const leftMesh = new THREE.Mesh(leftWall, wallMaterial);
+            leftMesh.rotation.y = Math.PI / 2;
+            leftMesh.position.set(-boxSize/2, 0, 0);
+            scene.add(leftMesh);
+            
+            // Right wall
+            const rightWall = new THREE.PlaneGeometry(boxSize, boxHeight);
+            const rightMesh = new THREE.Mesh(rightWall, wallMaterial);
+            rightMesh.rotation.y = -Math.PI / 2;
+            rightMesh.position.set(boxSize/2, 0, 0);
+            scene.add(rightMesh);
+
+            // Box rim
+            const rimMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xB8956A
+            });
+            
+            const rimThickness = 0.2;
+            
+            const rimFront = new THREE.BoxGeometry(boxSize + rimThickness * 2, rimThickness, rimThickness);
+            const rimFrontMesh = new THREE.Mesh(rimFront, rimMaterial);
+            rimFrontMesh.position.set(0, boxHeight/2, boxSize/2 + rimThickness/2);
+            scene.add(rimFrontMesh);
+            
+            const rimBack = new THREE.BoxGeometry(boxSize + rimThickness * 2, rimThickness, rimThickness);
+            const rimBackMesh = new THREE.Mesh(rimBack, rimMaterial);
+            rimBackMesh.position.set(0, boxHeight/2, -boxSize/2 - rimThickness/2);
+            scene.add(rimBackMesh);
+            
+            const rimLeft = new THREE.BoxGeometry(rimThickness, rimThickness, boxSize);
+            const rimLeftMesh = new THREE.Mesh(rimLeft, rimMaterial);
+            rimLeftMesh.position.set(-boxSize/2 - rimThickness/2, boxHeight/2, 0);
+            scene.add(rimLeftMesh);
+            
+            const rimRight = new THREE.BoxGeometry(rimThickness, rimThickness, boxSize);
+            const rimRightMesh = new THREE.Mesh(rimRight, rimMaterial);
+            rimRightMesh.position.set(boxSize/2 + rimThickness/2, boxHeight/2, 0);
+            scene.add(rimRightMesh);
+        }
+
+        function addBoxContents() {
+            createBook(-1.5, -1.3, 0.5);
+            createCoffeeMug(1, -1.5, -1);
+            createBall(0.5, -1, 1.5, 0x3498db);
+            createPencil(-0.8, -1.4, -1.8);
+            createSmallBox(1.8, -1.2, 0.8);
+            createPapers(-1.8, -1.4, -0.5);
+            createPhone(0, -1.4, -2);
+        }
+
+        function createBook(x, y, z) {
+            const bookGroup = new THREE.Group();
+            
+            const cover = new THREE.BoxGeometry(1.2, 0.15, 0.8);
+            const coverMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const coverMesh = new THREE.Mesh(cover, coverMaterial);
+            coverMesh.castShadow = true;
+            coverMesh.receiveShadow = true;
+            bookGroup.add(coverMesh);
+            
+            bookGroup.position.set(x, y, z);
+            bookGroup.rotation.y = Math.random() * 0.5;
+            scene.add(bookGroup);
+        }
+
+        function createCoffeeMug(x, y, z) {
+            const mugGroup = new THREE.Group();
+            
+            const mugBody = new THREE.CylinderGeometry(0.25, 0.3, 0.6, 16);
+            const mugMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const mugMesh = new THREE.Mesh(mugBody, mugMaterial);
+            mugMesh.castShadow = true;
+            mugMesh.receiveShadow = true;
+            mugGroup.add(mugMesh);
+            
+            const handleGeometry = new THREE.TorusGeometry(0.15, 0.03, 8, 16, Math.PI);
+            const handleMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const handleMesh = new THREE.Mesh(handleGeometry, handleMaterial);
+            handleMesh.rotation.z = Math.PI / 2;
+            handleMesh.position.set(0.35, 0, 0);
+            mugGroup.add(handleMesh);
+            
+            mugGroup.position.set(x, y + 0.3, z);
+            scene.add(mugGroup);
+        }
+
+        function createBall(x, y, z, color) {
+            const ballGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+            const ballMaterial = new THREE.MeshLambertMaterial({ color });
+            const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            ball.position.set(x, y, z);
+            ball.castShadow = true;
+            ball.receiveShadow = true;
+            scene.add(ball);
+        }
+
+        function createPencil(x, y, z) {
+            const pencilGroup = new THREE.Group();
+            
+            const bodyGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1, 8);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xffd700 });
+            const bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            bodyMesh.castShadow = true;
+            pencilGroup.add(bodyMesh);
+            
+            const tipGeometry = new THREE.CylinderGeometry(0.01, 0.03, 0.1, 8);
+            const tipMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const tipMesh = new THREE.Mesh(tipGeometry, tipMaterial);
+            tipMesh.position.y = -0.55;
+            pencilGroup.add(tipMesh);
+            
+            pencilGroup.position.set(x, y, z);
+            pencilGroup.rotation.z = Math.PI / 2;
+            pencilGroup.rotation.y = Math.random() * Math.PI;
+            scene.add(pencilGroup);
+        }
+
+        function createSmallBox(x, y, z) {
+            const boxGeometry = new THREE.BoxGeometry(0.6, 0.4, 0.4);
+            const boxMaterial = new THREE.MeshLambertMaterial({ color: 0x654321 });
+            const box = new THREE.Mesh(boxGeometry, boxMaterial);
+            box.position.set(x, y, z);
+            box.rotation.y = Math.random() * 0.5;
+            box.castShadow = true;
+            box.receiveShadow = true;
+            scene.add(box);
+        }
+
+        function createPapers(x, y, z) {
+            for (let i = 0; i < 3; i++) {
+                const paperGeometry = new THREE.PlaneGeometry(0.8, 1.1);
+                const paperMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0xffffff,
+                    side: THREE.DoubleSide
+                });
+                const paper = new THREE.Mesh(paperGeometry, paperMaterial);
+                paper.position.set(x + i * 0.02, y + i * 0.01, z + i * 0.02);
+                paper.rotation.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+                paper.rotation.z = (Math.random() - 0.5) * 0.3;
+                paper.receiveShadow = true;
+                scene.add(paper);
+            }
+        }
+
+        function createPhone(x, y, z) {
+            const phoneGeometry = new THREE.BoxGeometry(0.4, 0.05, 0.8);
+            const phoneMaterial = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            const phone = new THREE.Mesh(phoneGeometry, phoneMaterial);
+            phone.position.set(x, y, z);
+            phone.rotation.y = Math.random() * 0.3;
+            phone.castShadow = true;
+            phone.receiveShadow = true;
+            scene.add(phone);
+            
+            const screenGeometry = new THREE.PlaneGeometry(0.35, 0.7);
+            const screenMaterial = new THREE.MeshBasicMaterial({ color: 0x1a1a2e });
+            const screen = new THREE.Mesh(screenGeometry, screenMaterial);
+            screen.position.set(0, 0.026, 0);
+            screen.rotation.x = -Math.PI / 2;
+            phone.add(screen);
+        }
+
+        // Device orientation handling
+        function enableOrientation() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ permission request
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            startOrientation();
+                        } else {
+                            document.getElementById('status').textContent = 'Permission denied';
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Android or older iOS
+                startOrientation();
+            }
+        }
+
+        function startOrientation() {
+            window.addEventListener('deviceorientation', handleOrientation);
+            isOrientationActive = true;
+            
+            document.getElementById('enable-btn').style.display = 'none';
+            document.getElementById('calibrate-btn').style.display = 'inline-block';
+            document.getElementById('calibrate-btn').disabled = false;
+            document.getElementById('status').textContent = 'Device orientation active';
+            document.getElementById('orientation-status').textContent = 'Active';
+        }
+
+        function handleOrientation(event) {
+            deviceOrientation.alpha = event.alpha || 0; // Z axis (compass)
+            deviceOrientation.beta = event.beta || 0;   // X axis (front-back tilt)
+            deviceOrientation.gamma = event.gamma || 0; // Y axis (left-right tilt)
+            
+            updateCameraFromOrientation();
+            updateUI();
+        }
+
+        function calibrate() {
+            calibratedOrientation = { ...deviceOrientation };
+            isCalibrated = true;
+            document.getElementById('status').textContent = 'Calibrated! Tilt device to explore';
+            document.getElementById('calibrate-btn').disabled = true;
+        }
+
+        function updateCameraFromOrientation() {
+            if (!isCalibrated) return;
+
+            // Calculate relative orientation from calibrated position
+            let relativeGamma = deviceOrientation.gamma - calibratedOrientation.gamma;
+            let relativeBeta = deviceOrientation.beta - calibratedOrientation.beta;
+
+            // Clamp values to reasonable ranges
+            relativeGamma = Math.max(-45, Math.min(45, relativeGamma));
+            relativeBeta = Math.max(-30, Math.min(30, relativeBeta));
+
+            // Convert to camera position
+            const baseHeight = 8;
+            const baseDistance = 0;
+
+            // Map device tilt to camera movement
+            targetCameraPosition.x = -relativeGamma * 0.15; // Side-to-side
+            targetCameraPosition.y = baseHeight + relativeBeta * 0.1; // Height adjustment
+            targetCameraPosition.z = baseDistance - Math.abs(relativeGamma) * 0.05; // Slight forward movement when tilted
+
+            // Determine view mode based on camera height
+            const viewMode = targetCameraPosition.y > 6 ? 'Overview' : 'Inside Box';
+            document.getElementById('view-mode').textContent = viewMode;
+        }
+
+        function updateCamera() {
+            if (isOrientationActive && isCalibrated) {
+                // Smooth interpolation
+                camera.position.x += (targetCameraPosition.x - camera.position.x) * 0.1;
+                camera.position.y += (targetCameraPosition.y - camera.position.y) * 0.1;
+                camera.position.z += (targetCameraPosition.z - camera.position.z) * 0.1;
+                
+                // Look down into the box with slight parallax
+                const lookAtY = camera.position.y > 5 ? -1.5 : -0.5;
+                camera.lookAt(
+                    camera.position.x * 0.1,
+                    lookAtY,
+                    camera.position.z * 0.1
+                );
+            }
+        }
+
+        function updateUI() {
+            if (isOrientationActive) {
+                document.getElementById('tilt-x').textContent = deviceOrientation.beta.toFixed(1) + '°';
+                document.getElementById('tilt-y').textContent = deviceOrientation.gamma.toFixed(1) + '°';
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize everything
+        function init() {
+            initThreeJS();
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
