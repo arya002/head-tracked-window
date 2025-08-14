@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cottage Forest Window</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            font-family: 'Georgia', serif;
+            touch-action: none;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #canvas {
+            display: block;
+            touch-action: none;
+        }
+        
+        #video {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 120px;
+            height: 90px;
+            border: 2px solid rgba(139, 121, 94, 0.8);
+            border-radius: 8px;
+            z-index: 100;
+            transform: scaleX(-1);
+            opacity: 0.8;
+        }
+        
+        #window-frame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            background: 
+                linear-gradient(to right, 
+                    rgba(101, 87, 66, 0.95) 0%, 
+                    transparent 8%, 
+                    transparent 92%, 
+                    rgba(101, 87, 66, 0.95) 100%),
+                linear-gradient(to bottom, 
+                    rgba(101, 87, 66, 0.95) 0%, 
+                    transparent 8%, 
+                    transparent 92%, 
+                    rgba(101, 87, 66, 0.95) 100%);
+        }
+        
+        #window-frame::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border: 25px solid rgba(139, 121, 94, 0.9);
+            box-shadow: 
+                inset 0 0 0 3px rgba(160, 140, 110, 0.7),
+                inset 0 0 30px rgba(0, 0, 0, 0.5),
+                0 0 20px rgba(0, 0, 0, 0.8);
+            box-sizing: border-box;
+        }
+        
+        #window-frame::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 25px;
+            right: 25px;
+            height: 3px;
+            background: rgba(101, 87, 66, 0.8);
+            transform: translateY(-50%);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+        
+        #window-sill {
+            position: absolute;
+            bottom: 25px;
+            left: 25px;
+            right: 25px;
+            height: 15px;
+            background: linear-gradient(to bottom, rgba(139, 121, 94, 0.9), rgba(101, 87, 66, 0.9));
+            z-index: 60;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        #info {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: white;
+            background: rgba(101, 87, 66, 0.9);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            z-index: 100;
+            max-width: 200px;
+            border: 1px solid rgba(160, 140, 110, 0.5);
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(101, 87, 66, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+            border: 1px solid rgba(160, 140, 110, 0.5);
+        }
+        
+        button {
+            background: rgba(139, 121, 94, 0.8);
+            border: 1px solid rgba(160, 140, 110, 0.6);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 13px;
+            touch-action: manipulation;
+            font-family: 'Georgia', serif;
+        }
+        
+        button:hover, button:active {
+            background: rgba(160, 140, 110, 0.8);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        
+        .instruction {
+            font-size: 11px;
+            opacity: 0.9;
+            margin-top: 8px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        <video id="video" autoplay muted></video>
+        
+        <div id="window-frame"></div>
+        <div id="window-sill"></div>
+        
+        <div id="info">
+            <strong>Cottage Window View</strong><br>
+            Head Position: <span id="head-pos">Detecting...</span><br>
+            Tracking: <span id="tracking-status">Inactive</span><br>
+            View Angle: <span id="view-angle">Center</span>
+        </div>
+        
+        <div id="controls">
+            <div id="status">Look through the cottage window into the forest</div>
+            <button id="enable-btn" onclick="startCamera()">Enable Camera</button>
+            <div class="instruction">
+                Move your head to peek around trees and see deeper into the forest
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
+
+    <script>
+        // Global variables
+        let scene, camera, renderer;
+        let faceDetection;
+        let video;
+        let headPosition = { x: 0, y: 0, z: 1 };
+        let targetCameraPosition = { x: 0, y: 1.6, z: 0 };
+        let isTracking = false;
+        let trees = [];
+        let branches = [];
+
+        // Initialize Three.js scene
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            
+            // Create forest background with texture
+            const loader = new THREE.TextureLoader();
+            loader.crossOrigin = 'anonymous';
+            
+            // Use a forest background image or create gradient
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Create forest gradient background
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB'); // Sky blue
+            gradient.addColorStop(0.3, '#98FB98'); // Light green
+            gradient.addColorStop(0.7, '#228B22'); // Forest green
+            gradient.addColorStop(1, '#006400'); // Dark green
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add distant mountains
+            ctx.fillStyle = '#4682B4';
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height * 0.4);
+            for(let i = 0; i <= canvas.width; i += 50) {
+                ctx.lineTo(i, canvas.height * 0.4 + Math.sin(i * 0.01) * 30);
+            }
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fill();
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            scene.background = texture;
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 0); // Eye level inside cottage
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.fog = new THREE.Fog(0x228B22, 15, 50);
+
+            createForestScene();
+            animate();
+        }
+
+        function createForestScene() {
+            // Create ground
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x3d5a27, // Forest floor color
+                transparent: true,
+                opacity: 0.8
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.5;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Create trees at different distances
+            createTreeLayer(5, 15, 0.8); // Close trees
+            createTreeLayer(15, 25, 0.6); // Medium distance
+            createTreeLayer(25, 40, 0.4); // Far trees
+            
+            // Create branches just outside the window
+            createNearbyBranches();
+            
+            // Add forest undergrowth
+            createUndergrowth();
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+
+            // Sunlight filtering through trees
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 15, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.1;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -25;
+            directionalLight.shadow.camera.right = 25;
+            directionalLight.shadow.camera.top = 25;
+            directionalLight.shadow.camera.bottom = -25;
+            scene.add(directionalLight);
+
+            // Add warm interior light reflection
+            const interiorLight = new THREE.PointLight(0xffaa44, 0.3, 5);
+            interiorLight.position.set(0, 1.5, -1);
+            scene.add(interiorLight);
+        }
+
+        function createTreeLayer(minDistance, maxDistance, opacity) {
+            const treeCount = Math.floor((maxDistance - minDistance) * 2);
+            
+            for (let i = 0; i < treeCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = minDistance + Math.random() * (maxDistance - minDistance);
+                const x = Math.cos(angle) * distance;
+                const z = Math.sin(angle) * distance;
+                
+                createTree(x, z, distance, opacity);
+            }
+        }
+
+        function createTree(x, z, distance, opacity) {
+            const treeGroup = new THREE.Group();
+            
+            // Tree trunk
+            const trunkHeight = 3 + Math.random() * 8;
+            const trunkRadius = 0.2 + Math.random() * 0.3;
+            const trunkGeometry = new THREE.CylinderGeometry(
+                trunkRadius * 0.8, 
+                trunkRadius, 
+                trunkHeight, 
+                8
+            );
+            const trunkMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x3d2914,
+                transparent: true,
+                opacity: opacity
+            });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = trunkHeight / 2 - 0.5;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            treeGroup.add(trunk);
+
+            // Tree crown/foliage
+            const crownHeight = 2 + Math.random() * 4;
+            const crownRadius = 1 + Math.random() * 2;
+            const crownGeometry = new THREE.SphereGeometry(crownRadius, 8, 6);
+            const greenShade = Math.random() * 0.3 + 0.1;
+            const crownMaterial = new THREE.MeshLambertMaterial({ 
+                color: new THREE.Color(greenShade, 0.3 + greenShade, greenShade),
+                transparent: true,
+                opacity: opacity * 0.8
+            });
+            const crown = new THREE.Mesh(crownGeometry, crownMaterial);
+            crown.position.y = trunkHeight - 0.5 + crownHeight * 0.3;
+            crown.castShadow = true;
+            crown.receiveShadow = true;
+            treeGroup.add(crown);
+
+            // Add some branch details for closer trees
+            if (distance < 12) {
+                for (let i = 0; i < 3; i++) {
+                    const branchAngle = Math.random() * Math.PI * 2;
+                    const branchLength = 0.5 + Math.random() * 1;
+                    const branchGeometry = new THREE.CylinderGeometry(0.02, 0.05, branchLength, 4);
+                    const branch = new THREE.Mesh(branchGeometry, trunkMaterial);
+                    branch.position.set(
+                        Math.cos(branchAngle) * branchLength * 0.3,
+                        trunkHeight * 0.3 + i * 0.8,
+                        Math.sin(branchAngle) * branchLength * 0.3
+                    );
+                    branch.rotation.z = branchAngle + Math.PI / 4;
+                    treeGroup.add(branch);
+                }
+            }
+
+            treeGroup.position.set(x, 0, z);
+            trees.push(treeGroup);
+            scene.add(treeGroup);
+        }
+
+        function createNearbyBranches() {
+            // Create branches that appear very close to the window
+            for (let i = 0; i < 6; i++) {
+                const branchGroup = new THREE.Group();
+                
+                // Main branch
+                const branchLength = 2 + Math.random() * 3;
+                const branchGeometry = new THREE.CylinderGeometry(0.03, 0.08, branchLength, 6);
+                const branchMaterial = new THREE.MeshLambertMaterial({ color: 0x2d1810 });
+                const branch = new THREE.Mesh(branchGeometry, branchMaterial);
+                branch.castShadow = true;
+                branchGroup.add(branch);
+
+                // Add leaves to the branch
+                for (let j = 0; j < 8; j++) {
+                    const leafGeometry = new THREE.PlaneGeometry(0.1, 0.15);
+                    const leafMaterial = new THREE.MeshLambertMaterial({ 
+                        color: new THREE.Color(0.1 + Math.random() * 0.2, 0.3 + Math.random() * 0.3, 0.1),
+                        side: THREE.DoubleSide,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const leaf = new THREE.Mesh(leafGeometry, leafMaterial);
+                    leaf.position.set(
+                        (Math.random() - 0.5) * branchLength,
+                        (Math.random() - 0.5) * 0.2,
+                        (Math.random() - 0.5) * 0.2
+                    );
+                    leaf.rotation.set(
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI
+                    );
+                    branchGroup.add(leaf);
+                }
+
+                // Position branches around the window view
+                const angle = (i / 6) * Math.PI * 2;
+                const distance = 1.5 + Math.random() * 1;
+                branchGroup.position.set(
+                    Math.cos(angle) * distance,
+                    1 + Math.random() * 1.5,
+                    Math.sin(angle) * distance
+                );
+                branchGroup.rotation.set(
+                    (Math.random() - 0.5) * Math.PI / 2,
+                    angle + Math.PI / 2,
+                    (Math.random() - 0.5) * Math.PI / 4
+                );
+
+                branches.push(branchGroup);
+                scene.add(branchGroup);
+            }
+        }
+
+        function createUndergrowth() {
+            // Add forest floor vegetation
+            for (let i = 0; i < 50; i++) {
+                const bushGeometry = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 6, 4);
+                const bushMaterial = new THREE.MeshLambertMaterial({ 
+                    color: new THREE.Color(0.1, 0.25 + Math.random() * 0.15, 0.05),
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const bush = new THREE.Mesh(bushGeometry, bushMaterial);
+                
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 3 + Math.random() * 20;
+                bush.position.set(
+                    Math.cos(angle) * distance,
+                    -0.3 + Math.random() * 0.2,
+                    Math.sin(angle) * distance
+                );
+                bush.scale.y = 0.5 + Math.random() * 0.5;
+                bush.receiveShadow = true;
+                scene.add(bush);
+            }
+        }
+
+        // Initialize MediaPipe Face Detection
+        function initFaceDetection() {
+            faceDetection = new FaceDetection({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+                }
+            });
+
+            faceDetection.setOptions({
+                model: 'short',
+                minDetectionConfidence: 0.5
+            });
+
+            faceDetection.onResults(onFaceDetectionResults);
+        }
+
+        // Process face detection results
+        function onFaceDetectionResults(results) {
+            if (results.detections && results.detections.length > 0) {
+                const detection = results.detections[0];
+                const bbox = detection.boundingBox;
+                
+                // Calculate head position from bounding box
+                const centerX = bbox.xCenter;
+                const centerY = bbox.yCenter;
+                const width = bbox.width;
+                
+                // Map face position to window looking coordinates
+                headPosition.x = (centerX - 0.5) * 2; // Left/right looking
+                headPosition.y = (0.5 - centerY) * 1.5; // Up/down looking
+                headPosition.z = Math.max(0.3, 2 - width * 3); // Distance from window
+                
+                // Calculate target camera position (staying inside cottage, looking out)
+                targetCameraPosition.x = -headPosition.x * 0.8; // Parallax movement
+                targetCameraPosition.y = 1.6 + headPosition.y * 0.3; // Slight height adjustment
+                targetCameraPosition.z = -headPosition.z * 0.5; // Forward/back from window
+                
+                isTracking = true;
+                updateUI();
+            } else {
+                isTracking = false;
+                document.getElementById('tracking-status').textContent = 'Not detected';
+            }
+        }
+
+        // Update camera position based on head tracking
+        function updateCamera() {
+            if (isTracking) {
+                // Smooth interpolation
+                camera.position.x += (targetCameraPosition.x - camera.position.x) * 0.15;
+                camera.position.y += (targetCameraPosition.y - camera.position.y) * 0.15;
+                camera.position.z += (targetCameraPosition.z - camera.position.z) * 0.15;
+                
+                // Look out through the window with natural head movement
+                const lookDirection = new THREE.Vector3(
+                    camera.position.x * 0.8, // Slight parallax
+                    camera.position.y - 0.2, // Look slightly down into forest
+                    camera.position.z + 10   // Look forward into forest
+                );
+                camera.lookAt(lookDirection);
+            }
+        }
+
+        // Update UI elements
+        function updateUI() {
+            document.getElementById('head-pos').textContent = 
+                `X: ${headPosition.x.toFixed(1)}, Y: ${headPosition.y.toFixed(1)}`;
+            document.getElementById('tracking-status').textContent = 'Active';
+            
+            // Determine view angle description
+            let viewAngle = 'Center';
+            if (Math.abs(headPosition.x) > 0.3) {
+                viewAngle = headPosition.x > 0 ? 'Looking Left' : 'Looking Right';
+            }
+            if (Math.abs(headPosition.y) > 0.3) {
+                viewAngle += headPosition.y > 0 ? ' Up' : ' Down';
+            }
+            document.getElementById('view-angle').textContent = viewAngle;
+        }
+
+        // Start camera and face detection
+        async function startCamera() {
+            try {
+                video = document.getElementById('video');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    document.getElementById('status').textContent = 'Camera active - Look around the forest!';
+                    document.getElementById('enable-btn').style.display = 'none';
+                    
+                    // Start face detection
+                    initFaceDetection();
+                    const cameraUtils = new Camera(video, {
+                        onFrame: async () => {
+                            await faceDetection.send({image: video});
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                    cameraUtils.start();
+                };
+            } catch (error) {
+                document.getElementById('status').textContent = 'Camera access denied. Please allow camera access.';
+                console.error('Camera error:', error);
+            }
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerWidth);
+        }
+
+        // Initialize everything
+        function init() {
+            initThreeJS();
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
