@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chunnu Flashcard Quiz</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .flashcard-container {
+            perspective: 1000px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .flashcard {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            transform-style: preserve-3d;
+            transition: all 0.6s ease;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .flashcard.slide-out {
+            transform: translateX(-100%) rotateY(-90deg);
+            opacity: 0;
+        }
+
+        .flashcard.slide-in {
+            transform: translateX(100%) rotateY(90deg);
+            opacity: 0;
+        }
+
+        .question {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 30px;
+            line-height: 1.3;
+        }
+
+        .company-logo {
+            width: 150px;
+            height: auto;
+            margin: 20px auto;
+            border-radius: 10px;
+        }
+
+        .options {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .option-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            min-width: 100px;
+        }
+
+        .yes-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        .yes-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+
+        .no-btn {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+            color: white;
+        }
+
+        .no-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+        }
+
+        .shake {
+            animation: shake 0.8s ease-in-out;
+        }
+
+        .flash-red {
+            animation: flash 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0) translateY(0); }
+            5% { transform: translateX(-15px) translateY(-8px); }
+            10% { transform: translateX(12px) translateY(6px); }
+            15% { transform: translateX(-18px) translateY(-10px); }
+            20% { transform: translateX(16px) translateY(8px); }
+            25% { transform: translateX(-20px) translateY(-12px); }
+            30% { transform: translateX(14px) translateY(7px); }
+            35% { transform: translateX(-16px) translateY(-9px); }
+            40% { transform: translateX(18px) translateY(10px); }
+            45% { transform: translateX(-12px) translateY(-6px); }
+            50% { transform: translateX(15px) translateY(8px); }
+            55% { transform: translateX(-17px) translateY(-11px); }
+            60% { transform: translateX(13px) translateY(5px); }
+            65% { transform: translateX(-19px) translateY(-7px); }
+            70% { transform: translateX(11px) translateY(9px); }
+            75% { transform: translateX(-14px) translateY(-4px); }
+            80% { transform: translateX(16px) translateY(6px); }
+            85% { transform: translateX(-10px) translateY(-8px); }
+            90% { transform: translateX(8px) translateY(4px); }
+            95% { transform: translateX(-6px) translateY(-3px); }
+        }
+
+        @keyframes flash {
+            0%, 100% { background: linear-gradient(45deg, #f44336, #d32f2f); }
+            50% { background: linear-gradient(45deg, #ff1744, #f44336); box-shadow: 0 0 20px #ff1744; }
+        }
+
+        .congratulations {
+            display: none;
+            text-align: center;
+            color: white;
+            z-index: 1000;
+        }
+
+        .congratulations.show {
+            display: block;
+        }
+
+        .congrats-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            animation: bounce 1s ease-in-out infinite alternate;
+        }
+
+        .congrats-message {
+            font-size: 1.5rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes bounce {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-10px); }
+        }
+
+        @keyframes glow {
+            0% { text-shadow: 1px 1px 2px rgba(0,0,0,0.5), 0 0 10px rgba(255,255,255,0.3); }
+            100% { text-shadow: 1px 1px 2px rgba(0,0,0,0.5), 0 0 20px rgba(255,255,255,0.6); }
+        }
+
+        /* Fireworks */
+        .firework {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            animation: firework 1s ease-out infinite;
+        }
+
+        @keyframes firework {
+            0% {
+                transform: scale(0) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="flashcard-container">
+        <!-- Question 1 -->
+        <div class="flashcard" id="card1">
+            <div class="question">Are you a chunnu?</div>
+            <div class="options">
+                <button class="option-btn yes-btn" onclick="nextQuestion(1)">Yes</button>
+                <button class="option-btn no-btn" id="no1" onclick="wrongAnswer('no1')">No</button>
+            </div>
+        </div>
+
+        <!-- Question 2 -->
+        <div class="flashcard hidden" id="card2">
+            <div class="question">Did you get an internship offer from TE Connectivity?</div>
+            <div>
+                <svg class="company-logo" viewBox="0 0 200 60" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="10" y="10" width="180" height="40" fill="#0066cc" rx="5"/>
+                    <text x="100" y="32" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">TE Connectivity</text>
+                    <circle cx="25" cy="30" r="8" fill="white" opacity="0.8"/>
+                    <circle cx="175" cy="30" r="8" fill="white" opacity="0.8"/>
+                </svg>
+            </div>
+            <div class="options">
+                <button class="option-btn yes-btn" onclick="showCongratulations()">Yes</button>
+                <button class="option-btn no-btn" id="no2" onclick="wrongAnswer('no2')">No</button>
+            </div>
+        </div>
+
+        <!-- Congratulations -->
+        <div class="congratulations" id="congratulations">
+            <div class="congrats-title">🎉 Congratulations! 🎉</div>
+            <div class="congrats-message">You chunnu, you will get DTF tonight!</div>
+        </div>
+    </div>
+
+    <script>
+        function wrongAnswer(buttonId) {
+            const button = document.getElementById(buttonId);
+            button.classList.add('shake', 'flash-red');
+            
+            setTimeout(() => {
+                button.classList.remove('shake', 'flash-red');
+            }, 800);
+        }
+
+        function nextQuestion(current) {
+            const currentCard = document.getElementById(`card${current}`);
+            const nextCard = document.getElementById(`card${current + 1}`);
+            
+            currentCard.classList.add('slide-out');
+            
+            setTimeout(() => {
+                currentCard.classList.add('hidden');
+                nextCard.classList.remove('hidden');
+                nextCard.classList.add('slide-in');
+                
+                setTimeout(() => {
+                    nextCard.classList.remove('slide-in');
+                }, 100);
+            }, 300);
+        }
+
+        function showCongratulations() {
+            const card2 = document.getElementById('card2');
+            const congratulations = document.getElementById('congratulations');
+            
+            card2.classList.add('slide-out');
+            
+            setTimeout(() => {
+                card2.classList.add('hidden');
+                congratulations.classList.add('show');
+                createFireworks();
+            }, 300);
+        }
+
+        function createFireworks() {
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#ff69b4'];
+            
+            for (let i = 0; i < 50; i++) {
+                setTimeout(() => {
+                    const firework = document.createElement('div');
+                    firework.classList.add('firework');
+                    firework.style.left = Math.random() * window.innerWidth + 'px';
+                    firework.style.top = Math.random() * window.innerHeight + 'px';
+                    firework.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    firework.style.animationDelay = Math.random() * 0.5 + 's';
+                    firework.style.animationDuration = (Math.random() * 1 + 1) + 's';
+                    
+                    document.body.appendChild(firework);
+                    
+                    setTimeout(() => {
+                        firework.remove();
+                    }, 2000);
+                }, i * 100);
+            }
+            
+            // Continue creating fireworks
+            setTimeout(createFireworks, 2000);
+        }
+    </script>
+</body>
+</html>
